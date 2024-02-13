@@ -214,14 +214,14 @@ class FDFD_operators:
         self.Dxh = -self.Dxe.T.tocsr(); # Should be CSR format(Compressed Sparse Row)
         self.Dyh = -self.Dye.T.tocsr(); # Should be CSR format
         
-    def gen_lin_operators(self,materials):
+    def assemble_systems(self,materials):
             Ae = self.Dxh.multiply(materials.mu_yy.power(-1).multiply(self.Dxe)) + \
                  self.Dyh.multiply(materials.mu_xx.power(-1).multiply(self.Dye)) + \
                  materials.eps_zz;
             
             Ah = self.Dxe.multiply(materials.eps_yy.power(-1).multiply(self.Dxh)) + \
                  self.Dye.multiply(materials.eps_xx.power(-1).multiply(self.Dyh)) + \
-                 + materials.mu_zz;
+                 materials.mu_zz;
             return [Ae,Ah];
         
         

@@ -31,13 +31,11 @@ diff_operators.FDFD_gen_diff_operators(my_sim, float(10e9)); # Differential oper
 ## Each frequency gives different differential operators !!!
 
 ## Assemble linear system. A[0] is for TM mode and A[1] is for TE mode
-A = diff_operators.gen_lin_operators(materials);
+A = diff_operators.assemble_systems(materials);
 
 # We have assambled the system Ae = 0. We need a source b.
 # After that all that is left is to solve Ae = b and we have our 
 # Electric fields in the simulation domina e = inv(A)*b;
-
-#
 
 """
 materials.init_materials(my_sim);
