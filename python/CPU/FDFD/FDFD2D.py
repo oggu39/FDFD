@@ -71,43 +71,7 @@ class FDFD_upml():
         
         
         
-class FDFD_operators:
-    
-    def __init__(self, simDomain):
-        # Initialise differential operator to empty sparse. Total number of nodes(unknowns) = Nx*Ny -> matrix size of Nx*Ny x Nx*Ny
-        self.Dxe = scipy.sparse.lil_matrix((simDomain.Nx*simDomain.Ny, simDomain.Nx*simDomain.Ny)); # Might need to be complex type
-        self.Dye = scipy.sparse.lil_matrix((simDomain.Nx*simDomain.Ny, simDomain.Nx*simDomain.Ny)); 
-        self.Dxh = scipy.sparse.lil_matrix((simDomain.Nx*simDomain.Ny, simDomain.Nx*simDomain.Ny)); 
-        self.Dyh = scipy.sparse.lil_matrix((simDomain.Nx*simDomain.Ny, simDomain.Nx*simDomain.Ny)); 
-        
-    def FDFD_gen_operators(self, simDomain,freq):
-        Nx = simDomain.Nx; # Number of nodes in the x - direction should be integer
-        Ny = simDomain.Ny; # Number of nodes in the y - direction should be integer
-        ds = simDomain.ds; # Distance between nodes. dx = dy = ds(cubic grid is assumed)
-        k0 = 2*np.pi*freq/FDFD_constants.c0; # Wave number
-        
-        
-        self.Dxe.setdiag(-1,k=0);
-        self.Dxe.setdiag(1,k=1);
-        
-        
-        # Set dirichlet condition at the right boundary(x = Nx*ds)
-        for q in range(Nx-1,Nx,Nx*Ny-1):
-            self.Dxe[q,q+1] = 0;
-        
-        
-        self.Dxe = self.Dxe.tocsr()/(k0*ds); # Compressed Sparse Row (CSR) format
 
-        
-        # Dirichlet condition for the y differential is implicitly fullfilled
-        self.Dye.setdiag(-1,k=0);
-        self.Dye.setdiag(1,k=Nx); 
-        self.Dye = self.Dye.tocsr()/(k0*ds); # Compressed Sparse Row(CSR) format
-        
-        # Differential matricies for H is transpose of electric field 
-        self.Dxh = -self.Dxe.T; # Should be CSC format(Compressed Sparse Column)
-        self.Dyh = -self.Dye.T; # Should be CSC format
-        
 class FDFD_materials: 
     def __init__(self, simDomain):
         self.Nx = simDomain.Nx;
@@ -150,7 +114,7 @@ class FDFD_materials:
         # right side
         for i in range(Nx-pml_width,Nx,1):
             for j in range(0,Ny):
-                w = (i-(Nx-pml_width))/pml_width;
+                w = (i-(Nx-pml_width)+1)/pml_width;
                 q = i + j*Nx;
                 sx[q] = simDomain.PML.upml_s(w);
                 
@@ -207,15 +171,58 @@ class FDFD_materials:
         
         materials = self.get_materials();
         eps_z = np.abs(materials[2]);
-        plt.pcolor(eps_z,vmin=0,vmax=1000);
+        plt.pcolor(eps_z,vmin=0,vmax=2000);
         
-        
-       
-        
-        
+
         
         
         
+class FDFD_operators:
+    
+    def __init__(self, simDomain):
+        # Initialise differential operator to empty sparse. Total number of nodes(unknowns) = Nx*Ny -> matrix size of Nx*Ny x Nx*Ny
+        self.Dxe = scipy.sparse.lil_matrix((simDomain.Nx*simDomain.Ny, simDomain.Nx*simDomain.Ny)).astype(complex); 
+        self.Dye = scipy.sparse.lil_matrix((simDomain.Nx*simDomain.Ny, simDomain.Nx*simDomain.Ny)).astype(complex); 
+        self.Dxh = scipy.sparse.lil_matrix((simDomain.Nx*simDomain.Ny, simDomain.Nx*simDomain.Ny)).astype(complex); 
+        self.Dyh = scipy.sparse.lil_matrix((simDomain.Nx*simDomain.Ny, simDomain.Nx*simDomain.Ny)).astype(complex); 
+        
+    def FDFD_gen_diff_operators(self, simDomain,freq):
+        Nx = simDomain.Nx; # Number of nodes in the x - direction should be integer
+        Ny = simDomain.Ny; # Number of nodes in the y - direction should be integer
+        ds = simDomain.ds; # Distance between nodes. dx = dy = ds(cubic grid is assumed)
+        k0 = 2*np.pi*freq/FDFD_constants.c0; # Wave number
+        
+        
+        self.Dxe.setdiag(-1,k=0);
+        self.Dxe.setdiag(1,k=1);
+        
+        
+        # Set dirichlet condition at the right boundary(x = Nx*ds)
+        for q in range(Nx-1,Nx,Nx*Ny-1):
+            self.Dxe[q,q+1] = 0;
+        
+        
+        self.Dxe = self.Dxe.tocsr()/(k0*ds); # Compressed Sparse Row (CSR) format
+
+        
+        # Dirichlet condition for the y differential is implicitly fullfilled
+        self.Dye.setdiag(-1,k=0);
+        self.Dye.setdiag(1,k=Nx); 
+        self.Dye = self.Dye.tocsr()/(k0*ds); # Compressed Sparse Row(CSR) format
+        
+        # Differential matricies for H is transpose of electric field 
+        self.Dxh = -self.Dxe.T.tocsr(); # Should be CSR format(Compressed Sparse Row)
+        self.Dyh = -self.Dye.T.tocsr(); # Should be CSR format
+        
+    def gen_lin_operators(self,materials):
+            Ae = self.Dxh.multiply(materials.mu_yy.power(-1).multiply(self.Dxe)) + \
+                 self.Dyh.multiply(materials.mu_xx.power(-1).multiply(self.Dye)) + \
+                 materials.eps_zz;
+            
+            Ah = self.Dxe.multiply(materials.eps_yy.power(-1).multiply(self.Dxh)) + \
+                 self.Dye.multiply(materials.eps_xx.power(-1).multiply(self.Dyh)) + \
+                 + materials.mu_zz;
+            return [Ae,Ah];
         
         
         
