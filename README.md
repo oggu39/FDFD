@@ -5,3 +5,4 @@ Solve electromagnetic scattering problems in the frequency domain using finite d
  - Perfectly Matched Layers for open simulation domains
  - Periodic boundry condition for periodic structures
    
+### Still under developement
