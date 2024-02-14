@@ -186,7 +186,7 @@ class FDFD_operators:
         self.Dxh = scipy.sparse.lil_matrix((simDomain.Nx*simDomain.Ny, simDomain.Nx*simDomain.Ny)).astype(complex); 
         self.Dyh = scipy.sparse.lil_matrix((simDomain.Nx*simDomain.Ny, simDomain.Nx*simDomain.Ny)).astype(complex); 
         
-    def FDFD_gen_diff_operators(self, simDomain,freq):
+    def gen_diff_operators(self, simDomain,freq):
         Nx = simDomain.Nx; # Number of nodes in the x - direction should be integer
         Ny = simDomain.Ny; # Number of nodes in the y - direction should be integer
         ds = simDomain.ds; # Distance between nodes. dx = dy = ds(cubic grid is assumed)
@@ -223,6 +223,78 @@ class FDFD_operators:
                  self.Dye.multiply(materials.eps_xx.power(-1).multiply(self.Dyh)) + \
                  materials.mu_zz;
             return [Ae,Ah];
+        
+
+class FDFD_source:
+    def __init__(self,simDomain):
+        self.f_src = np.ones((simDomain.Nx*simDomain.Ny,)).astype(complex);
+        
+    def plane_wave(self,simDomain,amp,theta,freq):
+        k = 2*np.pi*freq/FDFD_constants.c0; # Magnitude of wave vector
+        
+        for i in range(0,simDomain.Nx):
+            for j in range(0,simDomain.Ny):
+                x = i*simDomain.ds;
+                y = j*simDomain.ds;
+                q = i+j*simDomain.Nx;
+                self.f_src[q] = np.exp(-1j*k*(x*np.cos(theta) + y*np.sin(theta)));
+                
+                
+                
+        self.f_src = amp*self.f_src;
+     
+    def get_source(self,simDomain):
+        Nx = simDomain.Nx;
+        Ny = simDomain.Ny;
+        f_src = np.ones((Nx,Ny)).astype(complex);
+        for i in range(0,Nx):
+            for j in range(0,Ny):
+                q = i + j*Nx;
+                f_src[i,j] = self.f_src[q];
+                
+        return f_src;
+    
+    def plot_source(self,simDomain):
+        f_src = np.real(self.get_source(simDomain));
+        plt.pcolor(f_src,vmin=-2,vmax=2);
+    
+    
+class FDFD_tfsf:
+    def __init__(self,simDomain,tfsf_width):
+        Nx = simDomain.Nx; 
+        Ny = simDomain.Ny;
+        self.Q = scipy.sparse.lil_matrix((Nx*Ny,Nx*Ny));
+        self.tfsf_width = tfsf_width; # TFSF width in number of nodes(must be integer). Should be at least 1-2 nodes larger than pml_width
+        
+    def masking_fnc(self,simDomain):
+        Nx = simDomain.Nx; Ny = simDomain.Ny;
+        
+        # Left edge
+        for i in range(0,self.tfsf_width):
+            for j in range(0,Ny):
+                q = i + j*Nx;
+                self.Q[q,q] = 1;
+        # Right edge
+        for i in range(Nx-self.tfsf_width,Nx):
+            for j in range(0,Ny):
+                q = i+j*Nx;
+                self.Q[q,q] = 1;
+        # Bottom edge
+        for i in range(0,Nx):
+            for j in range(0,self.tfsf_width):
+                q = i+j*Nx;
+                self.Q[q,q] = 1;
+        # Top edge
+        for i in range(0,Nx):
+            for j in range(Ny-self.tfsf_width,Ny):
+                q = i+j*Nx;
+                self.Q[q,q] = 1;
+                
+        self.Q = self.Q.tocsr(); # Convert to compressed sparse row format
+    
+    def assemble_source(self,A,f_src):
+        
+        return self.Q.multiply(A[0])-A[0].multiply(self.Q);
         
         
         

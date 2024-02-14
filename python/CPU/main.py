@@ -1,8 +1,8 @@
 import FDFD.FDFD2D as fdfd
-
+import numpy as np
 ## Simulation domain parameters
-Lx = 40e-3;
-Ly = 30e-3;
+Lx = 50e-3;
+Ly = 50e-3;
 ds = 0.15e-3;
 
 ## PML parameters
@@ -27,7 +27,7 @@ materials.init_materials(my_sim); # Initialize materials to vacuum and pml
 
 ## Differential operators
 diff_operators = fdfd.FDFD_operators(my_sim); # Initialize differential operators
-diff_operators.FDFD_gen_diff_operators(my_sim, float(10e9)); # Differential operators at 10 GHz
+diff_operators.gen_diff_operators(my_sim, float(10e9)); # Differential operators at 10 GHz
 ## Each frequency gives different differential operators !!!
 
 ## Assemble linear system. A[0] is for TM mode and A[1] is for TE mode
@@ -37,9 +37,19 @@ A = diff_operators.assemble_systems(materials);
 # After that all that is left is to solve Ae = b and we have our 
 # Electric fields in the simulation domina e = inv(A)*b;
 
+source = fdfd.FDFD_source(my_sim);
+source.plane_wave(my_sim, 1, np.pi/3, 10e9);
+source.plot_source(my_sim);
+
+tfsf = fdfd.FDFD_tfsf(my_sim, my_sim.PML.pml_width + 6)
+tfsf.masking_fnc(my_sim);
+
+b = tfsf.assemble_source(A, source.f_src);
+
 """
 materials.init_materials(my_sim);
 
 materials.visualize_materials();
+
 """
 
