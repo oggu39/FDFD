@@ -172,6 +172,7 @@ class FDFD_materials:
         materials = self.get_materials();
         eps_z = np.abs(materials[2]);
         plt.pcolor(eps_z,vmin=0,vmax=2000);
+        plt.show();
         
 
         
@@ -193,14 +194,16 @@ class FDFD_operators:
         k0 = 2*np.pi*freq/FDFD_constants.c0; # Wave number
         
         
-        self.Dxe.setdiag(-1,k=0);
-        self.Dxe.setdiag(1,k=1);
-        
-        
+        self.Dxe.setdiag(-1,k=0); # Set first diagonal
+        # self.Dxe.setdiag(1,k=1);
+        d2 = np.ones((Nx*Ny-1,));
+        d2[Nx-1:-1:Nx] = 0;
+        self.Dxe.setdiag(d2,k=1); # Set offset diagonal
+        """
         # Set dirichlet condition at the right boundary(x = Nx*ds)
         for q in range(Nx-1,Nx,Nx*Ny-1):
             self.Dxe[q,q+1] = 0;
-        
+        """
         
         self.Dxe = self.Dxe.tocsr()/(k0*ds); # Compressed Sparse Row (CSR) format
 
@@ -215,15 +218,17 @@ class FDFD_operators:
         self.Dyh = -self.Dye.T.tocsr(); # Should be CSR format
         
     def assemble_systems(self,materials):
-            Ae = self.Dxh.multiply(materials.mu_yy.power(-1).multiply(self.Dxe)) + \
-                 self.Dyh.multiply(materials.mu_xx.power(-1).multiply(self.Dye)) + \
+            Ae = self.Dxh @ (materials.mu_yy.power(-1) @ self.Dxe) + \
+                 self.Dyh @ (materials.mu_xx.power(-1) @ self.Dye) + \
                  materials.eps_zz;
             
-            Ah = self.Dxe.multiply(materials.eps_yy.power(-1).multiply(self.Dxh)) + \
-                 self.Dye.multiply(materials.eps_xx.power(-1).multiply(self.Dyh)) + \
+            Ah = self.Dxe @ (materials.eps_yy.power(-1) @ self.Dxh) + \
+                 self.Dye @ (materials.eps_xx.power(-1) @ self.Dyh) + \
                  materials.mu_zz;
+                 
+
             return [Ae,Ah];
-        
+
 
 class FDFD_source:
     def __init__(self,simDomain):
@@ -257,7 +262,7 @@ class FDFD_source:
     def plot_source(self,simDomain):
         f_src = np.real(self.get_source(simDomain));
         plt.pcolor(f_src,vmin=-2,vmax=2);
-    
+        plt.show();
     
 class FDFD_tfsf:
     def __init__(self,simDomain,tfsf_width):
@@ -293,8 +298,94 @@ class FDFD_tfsf:
         self.Q = self.Q.tocsr(); # Convert to compressed sparse row format
     
     def assemble_source(self,A,f_src):
+        Ae = (self.Q @ A[0]- A[0] @ self.Q) @ f_src; # TM
+        Ah = (self.Q @ A[1]- A[1] @ self.Q) @ f_src; # TE
+        return [Ae,Ah];
         
-        return self.Q.multiply(A[0])-A[0].multiply(self.Q);
+class FDFD_solver:
+	def __init__(self,A,b):
+        	self.A = A;
+        	self.b = b;
+        	self.e = False;
+        	self.h = False;
         
+	def LU_solve(self):
+        	self.e = scipy.sparse.linalg.spsolve(self.A[0],self.b[0]);
+        	self.h = scipy.sparse.linalg.spsolve(self.A[1],self.b[1]);
+        	return [self.e, self.h];
+        	
+	def LU_solve_TM(self):
+        	self.e = scipy.sparse.linalg.spsolve(self.A[0],self.b[0]);	
+        	return self.e;
+        	
+	def LU_solve_TE(self):
+        	self.h = scipy.sparse.linalg.spsolve(self.A[1],self.b[1]);
+        	return self.h;
         
+        	
+        	
+        	
+class FDFD_fields:
+	def __init__(self,simDomain,x):
+		Nx = simDomain.Nx;
+		Ny = simDomain.Ny;
+		self.solution = x;
+		self.efield = np.ones((Nx,Ny)).astype(complex);
+		self.hfield = np.ones((Nx,Ny)).astype(complex);
+		
+	def get_field(self,simDomain):
+		Nx = simDomain.Nx;
+		Ny = simDomain.Ny;
+		
+		self.efield = np.zeros((Nx,Ny));
+		for i in range(0,Nx):
+			for j in range(0,Ny):
+				q = i + j*Nx;
+				self.efield[i,j] = self.solution[q].astype(complex);
+		return np.real(self.efield);
+		
+	def plot_fields(self,simDomain):
+		field = self.get_field(simDomain);
+		x = np.linspace(-simDomain.Lx*0.5, simDomain.Lx*0.5,simDomain.Nx);
+		y = np.linspace(-simDomain.Ly*0.5, simDomain.Ly*0.5,simDomain.Ny); 
+		
+		x,y = np.meshgrid(x,y);
+		fig, ax0 = plt.subplots();
+		cs = plt.pcolor(x,y,field.T);
+		ax = plt.gca();
+		ax.set_aspect('equal',adjustable='box'); fig.colorbar(cs);
+		plt.show();
+		
+        	
+        	
+        	
+class FDFD_primitive_geometry:
+	def __init__(self,simDomain):
+		self.Nx = simDomain.Nx;
+		self.Ny = simDomain.Ny;
+		self.Lx = simDomain.Lx;
+		self.Ly = simDomain.Ly;
+		self.ds = simDomain.ds;
+	     	
+	def disc(self,materials, eps_r, mu_r, x0, a):
+        	Nx = self.Nx; Ny = self.Ny;
+        	
+        	for i in range(0,Nx):
+        		for j in range(0,Ny):
+        			x = -0.5*self.Lx + i*self.ds;
+        			y = -0.5*self.Ly + j*self.ds;
+        			q = i+j*Nx;
+        			if ((  (x0[0]-x)**2  +   (x0[1]-y)**2   ) <= a**2):
+        				materials.eps_xx[q,q] = eps_r.astype(complex);
+        				materials.eps_yy[q,q] = eps_r.astype(complex);
+        				materials.eps_zz[q,q] = eps_r.astype(complex);
+        				
+        				materials.mu_xx[q,q] = mu_r.astype(complex);
+        				materials.mu_yy[q,q] = mu_r.astype(complex);
+        				materials.mu_zz[q,q] = mu_r.astype(complex);
+        				
+        	return True;
+        	
+        	
+        	
         
